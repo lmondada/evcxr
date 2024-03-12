@@ -5,6 +5,8 @@
 // or https://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+pub(crate) mod compilation;
+
 use crate::cargo_metadata;
 use crate::child_process::ChildProcess;
 use crate::code_block::CodeBlock;
@@ -911,50 +913,7 @@ impl EvalContext {
         state: &mut ContextState,
         code: CodeBlock,
     ) -> Result<(), Error> {
-        self.analyzer.set_source(code.code_string())?;
-        for (
-            variable_name,
-            VariableInfo {
-                type_name,
-                is_mutable,
-            },
-        ) in self.analyzer.top_level_variables("evcxr_analysis_wrapper")
-        {
-            // We don't want to try to store evcxr_variable_store into itself, so we ignore it.
-            if variable_name == "evcxr_variable_store" {
-                continue;
-            }
-            let type_name = match type_name {
-                TypeName::Named(x) => x,
-                TypeName::Closure => bail!(
-                    "The variable `{}` is a closure, which cannot be persisted.\n\
-                     You can however persist closures if you box them. e.g.:\n\
-                     let f: Box<dyn Fn()> = Box::new(|| {{println!(\"foo\")}});\n\
-                     Alternatively, you can prevent evcxr from attempting to persist\n\
-                     the variable by wrapping your code in braces.",
-                    variable_name
-                ),
-                TypeName::Unknown => bail!(
-                    "Couldn't automatically determine type of variable `{}`.\n\
-                     Please give it an explicit type.",
-                    variable_name
-                ),
-            };
-            // For now, we need to look for and escape any reserved words. This should probably in
-            // theory be done in rust analyzer in a less hacky way.
-            let type_name = replace_reserved_words_in_type(&type_name);
-            state
-                .variable_states
-                .entry(variable_name)
-                .or_insert_with(|| VariableState {
-                    type_name: String::new(),
-                    is_mut: is_mutable,
-                    move_state: VariableMoveState::New,
-                    definition_span: None,
-                })
-                .type_name = type_name;
-        }
-        Ok(())
+        self.analyzer.fix_variable_types(state, code)
     }
 
     fn run_and_capture_output(
@@ -2107,6 +2066,59 @@ impl ContextState {
                 },
             );
         }
+    }
+}
+
+impl RustAnalyzer {
+    fn fix_variable_types(
+        &mut self,
+        state: &mut ContextState,
+        code: CodeBlock,
+    ) -> Result<(), Error> {
+        self.set_source(code.code_string())?;
+        for (
+            variable_name,
+            VariableInfo {
+                type_name,
+                is_mutable,
+            },
+        ) in self.top_level_variables("evcxr_analysis_wrapper")
+        {
+            // We don't want to try to store evcxr_variable_store into itself, so we ignore it.
+            if variable_name == "evcxr_variable_store" {
+                continue;
+            }
+            let type_name = match type_name {
+                TypeName::Named(x) => x,
+                TypeName::Closure => bail!(
+                    "The variable `{}` is a closure, which cannot be persisted.\n\
+                     You can however persist closures if you box them. e.g.:\n\
+                     let f: Box<dyn Fn()> = Box::new(|| {{println!(\"foo\")}});\n\
+                     Alternatively, you can prevent evcxr from attempting to persist\n\
+                     the variable by wrapping your code in braces.",
+                    variable_name
+                ),
+                TypeName::Unknown => bail!(
+                    "Couldn't automatically determine type of variable `{}`.\n\
+                     Please give it an explicit type.",
+                    variable_name
+                ),
+            };
+            // For now, we need to look for and escape any reserved words. This should probably in
+            // theory be done in rust analyzer in a less hacky way.
+            let type_name = replace_reserved_words_in_type(&type_name);
+            state
+                .variable_states
+                .entry(variable_name)
+                .or_insert_with(|| VariableState {
+                    type_name: String::new(),
+                    is_mut: is_mutable,
+                    move_state: VariableMoveState::New,
+                    definition_span: None,
+                })
+                .type_name = type_name;
+        }
+        Ok(())
     }
 }
 
