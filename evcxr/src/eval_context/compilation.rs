@@ -1,12 +1,16 @@
 //! Compile Rust code into a shared library for later use.
-//! 
+//!
 //! This takes bits and pieces of `eval_context.rs` (parent module) and remashes
 //! them together to separate code compilation from code execution.
 
 use std::path::PathBuf;
 
 use crate::{
-    code_block::CodeBlock, eval_context::{Config, ContextState}, module::Module, rust_analyzer::RustAnalyzer, Error
+    code_block::CodeBlock,
+    eval_context::{Config, ContextState},
+    module::Module,
+    rust_analyzer::RustAnalyzer,
+    Error,
 };
 
 use super::{create_initial_config, VariableMoveState, VariableState};
@@ -45,12 +49,14 @@ impl SharedLibFunctions {
     /// * `scope` - The set of variables in the current envrionment. This is
     ///   necessary to be able to determine the types and detect code with undefined
     ///   variables.
+    ///
+    /// Returns the function inputs and outputs.
     pub fn add_fn(
         &mut self,
         name: &str,
         fn_body: &str,
         scope: &[FunctionArg],
-    ) -> Result<(), Error> {
+    ) -> Result<(&[FunctionArg], &[FunctionArg]), Error> {
         // TODO: restrict the set of inputs.
         // For now, we take the whole scope as input
         let inputs = scope.to_owned();
@@ -61,7 +67,8 @@ impl SharedLibFunctions {
             inputs,
             outputs,
         });
-        Ok(())
+        let ind = self.functions.len() - 1;
+        Ok((&self.functions[ind].inputs, &self.functions[ind].outputs))
     }
 
     /// Generate the code that can be compiled into a shared library
