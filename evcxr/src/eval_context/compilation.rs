@@ -17,8 +17,8 @@ use super::{create_initial_config, VariableMoveState, VariableState};
 
 #[derive(Debug, Clone)]
 pub struct FunctionArg {
-    arg_name: String,
-    arg_type: String,
+    pub arg_name: String,
+    pub arg_type: String,
 }
 
 #[derive(Debug, Clone)]
